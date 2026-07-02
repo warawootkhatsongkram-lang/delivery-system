@@ -994,6 +994,8 @@ function escapeHtml_(str) {
 // ===================== หน้า 1 (ต่อ): ประวัติ DO — ดู/ปริ้นซ้ำ/แก้จำนวน/ลบ =====================
 let historyDos = [];              // [{doNo, palletCount, createdAt, createdBy}]
 let historyListenerStarted = false;
+let historyPage = 1;              // หน้าปัจจุบันของประวัติ DO
+const HISTORY_PAGE_SIZE = 10;     // แสดงสูงสุด 10 DO ต่อหน้า ถ้าเกินดันไปหน้าถัดไป
 
 function startHistoryListener_() {
   if (historyListenerStarted || !firebaseReady) return;
@@ -1025,8 +1027,46 @@ function renderHistory() {
   if (!list) return;
   if (!firebaseReady) { list.innerHTML = '<div class="history-empty">ยังไม่ได้เชื่อมต่อ Firebase</div>'; return; }
   if (!historyDos.length) { list.innerHTML = '<div class="history-empty">ยังไม่มี DO ที่สร้างไว้</div>'; return; }
+
+  // แบ่งหน้า: สูงสุด 10 DO ต่อหน้า
+  const totalPages = Math.max(1, Math.ceil(historyDos.length / HISTORY_PAGE_SIZE));
+  if (historyPage > totalPages) historyPage = totalPages; // ลบจนรายการหด → เด้งกลับหน้าสุดท้ายที่มีอยู่
+  if (historyPage < 1) historyPage = 1;
+
+  const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+  const pageItems = historyDos.slice(start, start + HISTORY_PAGE_SIZE);
+
   list.innerHTML = '';
-  historyDos.forEach((d) => list.appendChild(buildHistoryRow(d)));
+  pageItems.forEach((d) => list.appendChild(buildHistoryRow(d)));
+
+  if (totalPages > 1) list.appendChild(buildHistoryPager_(totalPages));
+}
+
+/** แถบแบ่งหน้าประวัติ DO: ‹ ก่อนหน้า | หน้า X/Y | ถัดไป › */
+function buildHistoryPager_(totalPages) {
+  const pager = document.createElement('div');
+  pager.className = 'history-pager';
+
+  const prev = document.createElement('button');
+  prev.type = 'button';
+  prev.textContent = '‹ ก่อนหน้า';
+  prev.disabled = historyPage <= 1;
+  prev.addEventListener('click', () => { if (historyPage > 1) { historyPage--; renderHistory(); } });
+
+  const info = document.createElement('span');
+  info.className = 'history-pageinfo';
+  info.textContent = 'หน้า ' + historyPage + ' / ' + totalPages + ' (ทั้งหมด ' + historyDos.length + ' DO)';
+
+  const next = document.createElement('button');
+  next.type = 'button';
+  next.textContent = 'ถัดไป ›';
+  next.disabled = historyPage >= totalPages;
+  next.addEventListener('click', () => { if (historyPage < totalPages) { historyPage++; renderHistory(); } });
+
+  pager.appendChild(prev);
+  pager.appendChild(info);
+  pager.appendChild(next);
+  return pager;
 }
 
 function buildHistoryRow(d) {
