@@ -148,6 +148,12 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 .modal-msg { font-size: 15px; line-height: 1.6; color: var(--text); white-space: pre-line; margin-bottom: 6px; }
 .modal-box .row { margin-top: 8px; }
 .modal-box .row button { flex: 1; }
+.dl-btn {
+  display: block; text-align: center; text-decoration: none;
+  margin-top: 14px; padding: 14px; background: var(--primary); color: #fff;
+  border-radius: 8px; font-weight: 700; font-size: 16px;
+}
+.dl-btn:active { background: var(--primary-dark); }
 
 /* ===== Lightbox แสดงรูปเต็ม ===== */
 .lightbox {

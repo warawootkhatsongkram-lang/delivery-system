@@ -1223,6 +1223,7 @@ async function exportPhotos(doNo) {
   if (!targets.length) { toast('ไม่มีรูปให้ส่งออก', 'error'); return; }
 
   busy(true);
+  dbg('เริ่มส่งออกรูป doNo=' + (doNo || 'ALL') + ' จำนวนเป้าหมาย=' + targets.length);
   try {
     const zip = new JSZip();
     let ok = 0;
@@ -1237,21 +1238,64 @@ async function exportPhotos(doNo) {
     }
     if (!ok) { toast('ไม่พบข้อมูลรูปให้ส่งออก', 'error'); return; }
     const blob = await zip.generateAsync({ type: 'blob' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'photos-' + (doNo || 'ALL') + '-' + Date.now() + '.zip';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    toast('✅ ส่งออก ' + ok + ' รูปแล้ว (' + a.download + ')', 'ok');
+    dbg('สร้าง ZIP สำเร็จ ' + ok + ' รูป · ' + Math.round(blob.size / 1024) + ' KB');
+    // แสดง modal พร้อมปุ่มให้ "แตะ" ดาวน์โหลด (ทำงานได้ทุกอุปกรณ์ รวมมือถือ)
+    presentDownload_(blob, 'photos-' + (doNo || 'ALL') + '-' + Date.now() + '.zip', ok);
   } catch (e) {
+    dbg('❌ ส่งออกล้มเหลว: ' + (e && (e.message || e)));
     toast('ส่งออกไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
   } finally {
     busy(false);
   }
 }
+
+// ----- Modal ดาวน์โหลด: ให้ผู้ใช้ "แตะ" เอง (user gesture) → บันทึกไฟล์ได้ชัวร์ทุกอุปกรณ์ -----
+let currentDownloadBlob_ = null;
+let currentDownloadName_ = null;
+let currentDownloadUrl_ = null;
+
+function presentDownload_(blob, fname, count) {
+  if (currentDownloadUrl_) { try { URL.revokeObjectURL(currentDownloadUrl_); } catch (_) {} }
+  currentDownloadBlob_ = blob;
+  currentDownloadName_ = fname;
+  currentDownloadUrl_ = URL.createObjectURL(blob);
+
+  const link = $('downloadLink');
+  link.href = currentDownloadUrl_;
+  link.download = fname;
+
+  $('downloadModalMsg').textContent =
+    'เตรียมไฟล์ ZIP พร้อมแล้ว (' + count + ' รูป · ' + Math.round(blob.size / 1024) + ' KB)\n' +
+    'แตะปุ่มด้านล่างเพื่อบันทึกลงเครื่อง';
+
+  // ปุ่มแชร์ (เหมาะกับมือถือ — iOS/Android "บันทึกไปยังไฟล์")
+  $('downloadShare').style.display = (typeof navigator.canShare === 'function') ? 'block' : 'none';
+
+  $('downloadModal').style.display = 'flex';
+}
+
+$('downloadLink').addEventListener('click', () => {
+  // ปล่อยให้เบราว์เซอร์ดาวน์โหลดตามปกติ แล้วปิด modal
+  toast('กำลังบันทึกไฟล์...', 'ok');
+  setTimeout(() => { $('downloadModal').style.display = 'none'; }, 400);
+});
+
+$('downloadShare').addEventListener('click', async () => {
+  try {
+    const file = new File([currentDownloadBlob_], currentDownloadName_, { type: 'application/zip' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: currentDownloadName_ });
+      $('downloadModal').style.display = 'none';
+    } else {
+      toast('อุปกรณ์นี้แชร์ไฟล์ไม่ได้ ใช้ปุ่มดาวน์โหลดแทน', 'error');
+    }
+  } catch (e) {
+    if (e && e.name !== 'AbortError') toast('แชร์ไม่สำเร็จ: ' + (e.message || ''), 'error');
+  }
+});
+
+$('downloadClose').addEventListener('click', () => { $('downloadModal').style.display = 'none'; });
+$('downloadModal').addEventListener('click', (e) => { if (e.target === $('downloadModal')) $('downloadModal').style.display = 'none'; });
 
 /**
  * ลบ "เฉพาะรูป" ของ DO ออกจาก Firestore เพื่อคืนพื้นที่ (เก็บประวัติสแกนไว้)
