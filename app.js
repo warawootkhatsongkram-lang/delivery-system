@@ -374,10 +374,13 @@ $('btnGen').addEventListener('click', async () => {
   }
 });
 
-$('btnPrint').addEventListener('click', () => window.print());
+$('btnPrint').addEventListener('click', async () => { await whenQrReady_(5000); window.print(); });
 
 /** วาด QR เป็นแผ่นละ 6 ดวง */
 function renderQrSheets(doNo, codes) {
+  if (typeof QRCode === 'undefined') {
+    throw new Error('ไลบรารีสร้าง QR ยังโหลดไม่เสร็จ (ต่อเน็ตแล้วรีเฟรชหน้าใหม่)');
+  }
   const area = $('printArea');
   area.innerHTML = '';
   for (let i = 0; i < codes.length; i += 6) {
@@ -408,6 +411,32 @@ function buildQrCell(code) {
   // qrcodejs วาดลงใน element ทันที
   new QRCode(img, { text: code.qrData, width: 600, height: 600, correctLevel: QRCode.CorrectLevel.H });
   return cell;
+}
+
+/**
+ * รอจน QR ทุกดวงในพื้นที่พิมพ์ "วาด/โหลดเสร็จจริง" ก่อนสั่งพิมพ์
+ * (qrcodejs สลับ canvas -> <img> ที่ src โหลดช้ากว่า 1 tick ถ้าพิมพ์เร็วไปดวงจะว่าง)
+ */
+function whenQrReady_(timeoutMs) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const check = () => {
+      const cells = document.querySelectorAll('#printArea .qr-img');
+      let ready = cells.length > 0;
+      cells.forEach((el) => {
+        const img = el.querySelector('img');
+        const canvas = el.querySelector('canvas');
+        let ok;
+        if (img && img.getAttribute('src')) ok = img.complete && img.naturalWidth > 0;
+        else if (canvas) ok = canvas.width > 0;
+        else ok = false;
+        if (!ok) ready = false;
+      });
+      if (ready || Date.now() - start > (timeoutMs || 4000)) resolve();
+      else setTimeout(check, 80);
+    };
+    check();
+  });
 }
 
 // ===================== หน้า 2: สแกนยืนยัน =====================
@@ -1036,15 +1065,23 @@ function buildHistoryRow(d) {
   return row;
 }
 
-/** ปริ้นซ้ำ QR ของ DO (กรณีป้ายชำรุด) — วาดใหม่แล้วเปิดหน้าพิมพ์ */
-function reprintDO(doNo, count) {
+/** ปริ้นซ้ำ QR ของ DO (กรณีป้ายชำรุด) — วาดใหม่ รอวาดครบ แล้วเปิดหน้าพิมพ์ */
+async function reprintDO(doNo, count) {
+  if (typeof QRCode === 'undefined') {
+    return toast('ไลบรารีสร้าง QR ยังโหลดไม่เสร็จ (ต่อเน็ตแล้วรีเฟรชหน้าใหม่)', 'error');
+  }
   const codes = [];
   for (let i = 1; i <= count; i++) codes.push({ seq: i, qrData: buildQrData_(doNo, i) });
-  renderQrSheets(doNo, codes);
+  try {
+    renderQrSheets(doNo, codes);
+  } catch (e) {
+    return toast(e.message || 'สร้าง QR ไม่สำเร็จ', 'error');
+  }
   $('btnPrint').style.display = 'block';
   $('printArea').scrollIntoView({ behavior: 'smooth' });
   toast('เตรียมพิมพ์ DO ' + doNo + ' (' + count + ' ดวง)', 'ok');
-  setTimeout(() => window.print(), 500);
+  await whenQrReady_(5000);   // รอ QR วาดครบก่อนพิมพ์ (กัน "ขึ้นไม่ครบ")
+  window.print();
 }
 
 /** แก้ "จำนวนพาเลท" ของ DO แบบ inline */
