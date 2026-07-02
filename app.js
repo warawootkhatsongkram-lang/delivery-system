@@ -339,6 +339,7 @@ document.querySelectorAll('.tab').forEach(btn => {
     btn.classList.add('active');
     $('page-' + btn.dataset.tab).classList.add('active');
     if (btn.dataset.tab === 'monitor') renderMonitor();
+    if (btn.dataset.tab === 'export') renderExport();
   });
 });
 
@@ -729,6 +730,7 @@ function startMonitorListeners_() {
       });
     });
     renderMonitor();
+    refreshExportIfActive_();
   }, (err) => {
     toast('โหลดข้อมูลมอนิเตอร์ไม่สำเร็จ: ' + (err.message || ''), 'error');
   });
@@ -749,6 +751,7 @@ function startMonitorListeners_() {
       });
     });
     renderMonitor();
+    refreshExportIfActive_();
   }, (err) => {
     toast('โหลดข้อมูลการสแกนไม่สำเร็จ: ' + (err.message || ''), 'error');
   });
@@ -852,6 +855,19 @@ function buildMonitorRow(r) {
     });
 
     card.appendChild(toggle);
+
+    // ปุ่มส่งออกรูปของ DO นี้ (เฉพาะที่มีรูป)
+    const photoCount = scans.filter(s => s.hasPhoto).length;
+    if (photoCount) {
+      const bExp = document.createElement('button');
+      bExp.className = 'mon-toggle';
+      bExp.type = 'button';
+      bExp.style.marginLeft = '14px';
+      bExp.textContent = '⬇️ ส่งออกรูป (' + photoCount + ')';
+      bExp.addEventListener('click', () => exportPhotos(r.doNo));
+      card.appendChild(bExp);
+    }
+
     card.appendChild(detail);
   }
 
@@ -1129,6 +1145,148 @@ $('confirmModal').addEventListener('click', (e) => { if (e.target === $('confirm
 $('btnHistoryRefresh').addEventListener('click', renderHistory);
 $('lightboxClose').addEventListener('click', closeLightbox_);
 $('lightbox').addEventListener('click', (e) => { if (e.target === $('lightbox')) closeLightbox_(); });
+
+// ===================== หน้า 4: ส่งออก / จัดการรูป =====================
+// รีเฟรชหน้าส่งออกอัตโนมัติเมื่อข้อมูลอัปเดต (ถ้าอยู่หน้าส่งออก)
+function refreshExportIfActive_() {
+  const p = $('page-export');
+  if (p && p.classList.contains('active')) renderExport();
+}
+
+function renderExport() {
+  startMonitorListeners_(); // ใช้แคช dos/scans ร่วมกับมอนิเตอร์
+  const list = $('exportList');
+  const meta = $('exportMeta');
+  if (!list) return;
+  if (!firebaseReady) {
+    list.innerHTML = '<div class="card">⚠️ ยังไม่ได้ตั้งค่า Firebase</div>';
+    if (meta) meta.textContent = '';
+    return;
+  }
+
+  // นับรูปต่อ DO จากแคช
+  const byDo = {};
+  monitorScans.forEach((s) => { if (s.hasPhoto) byDo[s.doNo] = (byDo[s.doNo] || 0) + 1; });
+  const doNos = Object.keys(byDo).sort();
+  const totalPhotos = doNos.reduce((sum, d) => sum + byDo[d], 0);
+
+  if (meta) meta.textContent = 'มีรูปทั้งหมด ' + totalPhotos + ' รูป · ' + doNos.length + ' DO';
+  $('btnExportAll').disabled = totalPhotos === 0;
+
+  list.innerHTML = '';
+  if (!doNos.length) {
+    list.innerHTML = '<div class="card">ยังไม่มีรูปให้ส่งออก</div>';
+    return;
+  }
+  doNos.forEach((doNo) => list.appendChild(buildExportRow(doNo, byDo[doNo])));
+}
+
+function buildExportRow(doNo, count) {
+  const card = document.createElement('div');
+  card.className = 'card history-row';
+
+  const info = document.createElement('div');
+  info.className = 'history-info';
+  info.innerHTML =
+    '<div class="history-do">' + escapeHtml_(doNo) + '</div>' +
+    '<div class="history-sub">' + count + ' รูป</div>';
+  card.appendChild(info);
+
+  const actions = document.createElement('div');
+  actions.className = 'history-actions';
+
+  const bExp = document.createElement('button');
+  bExp.className = 'h-print'; bExp.type = 'button'; bExp.textContent = '⬇️ ส่งออก (ZIP)';
+  bExp.addEventListener('click', () => exportPhotos(doNo));
+
+  const bDel = document.createElement('button');
+  bDel.className = 'h-del'; bDel.type = 'button'; bDel.textContent = '🗑️ ลบรูป (คืนพื้นที่)';
+  bDel.addEventListener('click', () => deletePhotos(doNo));
+
+  actions.appendChild(bExp);
+  actions.appendChild(bDel);
+  card.appendChild(actions);
+  return card;
+}
+
+/**
+ * ส่งออกรูปเป็นไฟล์ ZIP ลงเครื่อง — doNo = null คือทุก DO
+ * ชื่อไฟล์ในซิป = <DO>-<ลำดับ 3 หลัก>.jpg
+ */
+async function exportPhotos(doNo) {
+  if (!firebaseReady) return;
+  if (typeof JSZip === 'undefined') {
+    toast('โหลดไลบรารี ZIP ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต', 'error');
+    return;
+  }
+  const targets = monitorScans.filter((s) => s.hasPhoto && (!doNo || s.doNo === doNo));
+  if (!targets.length) { toast('ไม่มีรูปให้ส่งออก', 'error'); return; }
+
+  busy(true);
+  try {
+    const zip = new JSZip();
+    let ok = 0;
+    for (const s of targets) {
+      const snap = await db.collection('scanPhotos').doc(s.scanId).get();
+      const dataUrl = snap.exists && snap.data() ? snap.data().dataUrl : null;
+      if (!dataUrl) continue;
+      const comma = dataUrl.indexOf(',');
+      const base64 = comma >= 0 ? dataUrl.substring(comma + 1) : dataUrl;
+      zip.file(s.doNo + '-' + seqId_(s.palletNo) + '.jpg', base64, { base64: true });
+      ok++;
+    }
+    if (!ok) { toast('ไม่พบข้อมูลรูปให้ส่งออก', 'error'); return; }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'photos-' + (doNo || 'ALL') + '-' + Date.now() + '.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('✅ ส่งออก ' + ok + ' รูปแล้ว (' + a.download + ')', 'ok');
+  } catch (e) {
+    toast('ส่งออกไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
+  } finally {
+    busy(false);
+  }
+}
+
+/**
+ * ลบ "เฉพาะรูป" ของ DO ออกจาก Firestore เพื่อคืนพื้นที่ (เก็บประวัติสแกนไว้)
+ * ตั้ง scans.hasPhoto = false เพื่อให้มอนิเตอร์รู้ว่ารูปถูกนำออกแล้ว
+ */
+async function deletePhotos(doNo) {
+  if (!firebaseReady) return;
+  const targets = monitorScans.filter((s) => s.hasPhoto && s.doNo === doNo);
+  if (!targets.length) { toast('DO นี้ไม่มีรูปให้ลบ', 'error'); return; }
+
+  const ok = await showConfirm(
+    'ลบ "รูปถ่าย" ของ DO ' + doNo + ' จำนวน ' + targets.length + ' รูป ออกจาก Firestore เพื่อคืนพื้นที่?\n\n' +
+    '• ประวัติการสแกน/สถานะยังอยู่ครบ\n• แต่จะกดดูรูปไม่ได้อีก\n\nแนะนำ: กด "ส่งออก (ZIP)" เก็บลงคอมก่อน');
+  if (!ok) return;
+
+  busy(true);
+  try {
+    for (let i = 0; i < targets.length; i += 200) {
+      const batch = db.batch();
+      targets.slice(i, i + 200).forEach((s) => {
+        batch.delete(db.collection('scanPhotos').doc(s.scanId));
+        batch.update(db.collection('scans').doc(s.scanId), { hasPhoto: false });
+      });
+      await batch.commit();
+    }
+    toast('ลบรูปของ DO ' + doNo + ' แล้ว (' + targets.length + ' รูป คืนพื้นที่)', 'ok');
+  } catch (e) {
+    toast('ลบรูปไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
+  } finally {
+    busy(false);
+  }
+}
+
+$('btnExportAll').addEventListener('click', () => exportPhotos(null));
+$('btnExportRefresh').addEventListener('click', renderExport);
 
 // ===================== เริ่มต้นแอป =====================
 initFirebase_();

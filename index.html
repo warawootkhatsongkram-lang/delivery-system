@@ -7,6 +7,8 @@
   <!-- ไลบรารีภายนอก: สร้าง QR และสแกน QR ผ่านกล้อง -->
   <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- JSZip: ใช้รวมรูปเป็นไฟล์ ZIP เพื่อส่งออกลงเครื่อง -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <!-- Firebase (ฐานข้อมูลกลาง + เก็บรูปภาพแบบบีบอัดใน Firestore) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -22,6 +24,7 @@
     <button class="tab active" data-tab="gen">สร้าง QR</button>
     <button class="tab" data-tab="scan">สแกนยืนยัน</button>
     <button class="tab" data-tab="monitor">มอนิเตอร์</button>
+    <button class="tab" data-tab="export">ส่งออก</button>
   </nav>
 
   <!-- ===== หน้า 1: สร้าง / เจน QR ===== -->
@@ -118,6 +121,18 @@
       </div>
     </div>
     <div id="monitorList"></div>
+  </section>
+
+  <!-- ===== หน้า 4: ส่งออก / จัดการรูป ===== -->
+  <section id="page-export" class="page">
+    <div class="card no-print">
+      <label>⬇️ ส่งออก / จัดการรูปถ่าย</label>
+      <p class="hint">โหลดรูปเก็บไว้ในคอมเป็นไฟล์ ZIP (ชื่อไฟล์ = <code>DO-ลำดับ.jpg</code>) แล้วค่อยกด "ลบรูป" เพื่อคืนพื้นที่ Firestore (ฟรี 1 GiB) — ประวัติการสแกนยังอยู่ครบ</p>
+      <button id="btnExportAll" class="primary">⬇️ ส่งออกรูปทั้งหมด (ZIP)</button>
+      <button id="btnExportRefresh" class="ghost">🔄 รีเฟรช</button>
+      <p class="hint" id="exportMeta"></p>
+    </div>
+    <div id="exportList"></div>
   </section>
 
   <p class="storage-note no-print">☁️ เก็บข้อมูลกลางผ่าน Firebase ทุกคนเห็นข้อมูลชุดเดียวกัน</p>
