@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>ระบบยืนยันการส่งของ</title>
+  <!-- ไลบรารีภายนอก: สร้าง QR และสแกน QR ผ่านกล้อง -->
+  <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Firebase (ฐานข้อมูลกลาง + เก็บรูปภาพแบบบีบอัดใน Firestore) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>📦 ระบบยืนยันการส่งของ</h1>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="gen">สร้าง QR</button>
+    <button class="tab" data-tab="scan">สแกนยืนยัน</button>
+    <button class="tab" data-tab="monitor">มอนิเตอร์</button>
+  </nav>
+
+  <!-- ===== หน้า 1: สร้าง / เจน QR ===== -->
+  <section id="page-gen" class="page active">
+    <div class="card no-print">
+      <label>เลขที่ DO</label>
+      <input id="genDo" type="text" placeholder="เช่น DO12345" autocomplete="off">
+
+      <label>จำนวนพาเลท</label>
+      <input id="genCount" type="number" min="1" max="999" placeholder="เช่น 12">
+
+      <button id="btnGen" class="primary">สร้าง QR Code</button>
+      <button id="btnPrint" class="ghost" style="display:none">🖨️ พิมพ์ (4×6 นิ้ว / 6 ดวงต่อแผ่น)</button>
+      <p class="hint">QR แต่ละดวงจะบรรจุ <b>เลข DO + ลำดับพาเลท</b> เช่น <code>DO12345-001</code></p>
+    </div>
+
+    <!-- พื้นที่พิมพ์: แบ่งเป็นแผ่นละ 6 ดวง บนกระดาษ 4×6 นิ้ว -->
+    <div id="printArea"></div>
+  </section>
+
+  <!-- ===== หน้า 2: สแกนยืนยัน ===== -->
+  <section id="page-scan" class="page">
+    <div class="card no-print">
+      <label>ชื่อผู้ใช้งาน (ถ้ามี)</label>
+      <input id="userName" type="text" placeholder="เช่น สมชาย (ไม่บังคับ)" autocomplete="off">
+    </div>
+
+    <div class="card">
+      <label>เลขที่ DO</label>
+      <div class="row">
+        <input id="scanDo" type="text" placeholder="กรอกเลข DO ที่จะส่ง" autocomplete="off">
+        <button id="btnLoadDo" class="primary">โหลด</button>
+      </div>
+      <div id="doSummary" class="summary" style="display:none"></div>
+    </div>
+
+    <div id="scanControls" class="card" style="display:none">
+      <label>สแกน QR — เปิดกล้องแล้วจ่อไปที่ QR ระบบจะอ่านให้อัตโนมัติ</label>
+      <button id="btnLiveScan" class="primary">📷 เปิดกล้องสแกนสด</button>
+      <button id="btnStopScan" class="ghost" style="display:none">⏹ ปิดกล้อง</button>
+      <div id="reader" style="display:none"></div>
+      <p class="hint">📷 จ่อกล้องให้ QR อยู่ในกรอบกลางภาพและชัด ระบบจะอ่านให้อัตโนมัติ · ครั้งแรกต้องกด "อนุญาต" ให้ใช้กล้อง</p>
+
+      <label>หรือถ่ายรูป QR (ถ้ากล้องสดใช้ไม่ได้)</label>
+      <input id="qrInput" type="file" accept="image/*" capture="environment">
+
+      <label>หรือกรอกข้อมูล QR ด้วยตนเอง</label>
+      <div class="row">
+        <input id="manualQr" type="text" placeholder="เช่น DO12345-001" autocomplete="off">
+        <button id="btnManualQr" class="primary">ตรวจสอบ</button>
+      </div>
+
+      <!-- DEBUG PANEL: แสดงสถานะกล้อง/ไลบรารี เพื่อวิเคราะห์ปัญหาให้ตรงจุด (คงไว้จนกว่าจะสั่งเอาออก) -->
+      <div id="debugPanel">
+        <div class="dbg-head">
+          <span>🐞 DEBUG PANEL (กล้อง/สแกน)</span>
+          <button id="btnDbgClear" type="button">ล้าง</button>
+        </div>
+        <div id="debugLog" class="dbg-log"></div>
+      </div>
+    </div>
+
+    <!-- การ์ดยืนยันหลังสแกนได้ -->
+    <div id="confirmCard" class="card" style="display:none">
+      <div id="confirmInfo" class="summary"></div>
+      <label>ถ่ายรูปแนบ (บังคับ)</label>
+      <input id="photoInput" type="file" accept="image/*" capture="environment">
+      <img id="photoPreview" class="preview" style="display:none">
+      <label>หมายเหตุ (ถ้ามี)</label>
+      <input id="scanNote" type="text" placeholder="หมายเหตุเพิ่มเติม">
+      <div class="row">
+        <button id="btnSaveScan" class="primary" disabled>💾 บันทึก</button>
+        <button id="btnCancelScan" class="ghost">ยกเลิก</button>
+      </div>
+      <p class="hint" id="photoHint">⚠️ ต้องถ่ายรูปแนบก่อนจึงจะบันทึกได้</p>
+    </div>
+  </section>
+
+  <!-- ===== หน้า 3: มอนิเตอร์ ===== -->
+  <section id="page-monitor" class="page">
+    <div class="card no-print">
+      <div class="row">
+        <button id="btnRefresh" class="primary">🔄 รีเฟรช</button>
+        <span id="monitorMeta" class="hint"></span>
+      </div>
+    </div>
+    <div id="monitorList"></div>
+  </section>
+
+  <p class="storage-note no-print">☁️ เก็บข้อมูลกลางผ่าน Firebase ทุกคนเห็นข้อมูลชุดเดียวกัน</p>
+  <p class="app-footer no-print">ระบบยืนยันการส่งของ · เวอร์ชันสแตติก (ไม่มีเซิร์ฟเวอร์)</p>
+
+  <div id="toast" class="toast"></div>
+  <div id="overlay" class="overlay" style="display:none"><div class="spinner"></div></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
