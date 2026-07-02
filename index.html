@@ -38,6 +38,15 @@
       <p class="hint">QR แต่ละดวงจะบรรจุ <b>เลข DO + ลำดับพาเลท</b> เช่น <code>DO12345-001</code></p>
     </div>
 
+    <!-- ประวัติ DO ที่สร้างไว้ — ดู/ปริ้นซ้ำ/แก้จำนวน/ลบ -->
+    <div class="card no-print" id="historyCard">
+      <div class="row" style="justify-content:space-between">
+        <label style="margin:0">📋 ประวัติ DO ที่สร้างไว้</label>
+        <button id="btnHistoryRefresh" class="ghost" style="width:auto;margin:0;padding:6px 12px;font-size:13px">🔄 รีเฟรช</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
+    </div>
+
     <!-- พื้นที่พิมพ์: แบ่งเป็นแผ่นละ 6 ดวง บนกระดาษ 4×6 นิ้ว -->
     <div id="printArea"></div>
   </section>
@@ -113,6 +122,24 @@
 
   <p class="storage-note no-print">☁️ เก็บข้อมูลกลางผ่าน Firebase ทุกคนเห็นข้อมูลชุดเดียวกัน</p>
   <p class="app-footer no-print">ระบบยืนยันการส่งของ · เวอร์ชันสแตติก (ไม่มีเซิร์ฟเวอร์)</p>
+
+  <!-- Lightbox แสดงรูปเต็มเมื่อกดดูรูปในหน้ามอนิเตอร์ -->
+  <div id="lightbox" class="lightbox" style="display:none">
+    <div id="lightboxLoading" class="lightbox-loading">กำลังโหลดรูป...</div>
+    <img id="lightboxImg" alt="รูปพาเลท" style="display:none">
+    <button id="lightboxClose" class="lightbox-close" type="button">✕</button>
+  </div>
+
+  <!-- Modal ยืนยัน (ใช้ตอนลบ DO) -->
+  <div id="confirmModal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div id="confirmModalMsg" class="modal-msg"></div>
+      <div class="row">
+        <button id="confirmModalCancel" class="ghost">ยกเลิก</button>
+        <button id="confirmModalOk" class="primary">ยืนยัน</button>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
   <div id="overlay" class="overlay" style="display:none"><div class="spinner"></div></div>

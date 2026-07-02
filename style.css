@@ -113,6 +113,54 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 .mon-scan-row .mon-scan-meta { flex: 1; color: #607d8b; }
 .mon-toggle { background: none; border: none; color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; margin-top: 8px; }
 
+/* ===== ประวัติ DO ที่สร้างไว้ (หน้าสร้าง QR) ===== */
+.history-list { margin-top: 10px; }
+.history-empty { font-size: 13px; color: #90a4ae; padding: 8px 0; }
+.history-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  border-top: 1px solid var(--line); padding: 10px 0;
+}
+.history-row:first-child { border-top: none; }
+.history-info { flex: 1; min-width: 150px; }
+.history-do { font-weight: 700; font-size: 15px; color: var(--primary-dark); }
+.history-sub { font-size: 12px; color: #78909c; margin-top: 2px; }
+.history-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.history-actions button {
+  width: auto; margin: 0; padding: 7px 10px; font-size: 12px; font-weight: 600;
+  border-radius: 7px; cursor: pointer; border: 1px solid var(--line); background: #fff; color: var(--text);
+}
+.history-actions .h-print { border-color: var(--primary); color: var(--primary); }
+.history-actions .h-edit { border-color: #f9a825; color: #f57f17; }
+.history-actions .h-del { border-color: #ef9a9a; color: #c62828; }
+.history-edit { display: flex; gap: 6px; align-items: center; width: 100%; margin-top: 6px; }
+.history-edit input { width: 90px; padding: 8px; font-size: 14px; }
+.history-edit button { width: auto; margin: 0; padding: 8px 12px; font-size: 13px; }
+
+/* ===== Modal ยืนยัน (ลบ ฯลฯ) ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 300;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-box {
+  background: #fff; border-radius: 14px; padding: 20px; max-width: 400px; width: 100%;
+  box-shadow: 0 8px 30px rgba(0,0,0,.25);
+}
+.modal-msg { font-size: 15px; line-height: 1.6; color: var(--text); white-space: pre-line; margin-bottom: 6px; }
+.modal-box .row { margin-top: 8px; }
+.modal-box .row button { flex: 1; }
+
+/* ===== Lightbox แสดงรูปเต็ม ===== */
+.lightbox {
+  position: fixed; inset: 0; background: rgba(0,0,0,.9); z-index: 400;
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox img { max-width: 96%; max-height: 90vh; border-radius: 8px; }
+.lightbox-loading { color: #fff; font-size: 15px; }
+.lightbox-close {
+  position: fixed; top: 14px; right: 16px; width: 44px; height: 44px; border-radius: 50%;
+  border: none; background: rgba(255,255,255,.15); color: #fff; font-size: 22px; cursor: pointer;
+}
+
 /* Toast + overlay */
 .toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -159,7 +207,10 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
   body { background: #fff; padding: 0; }
   .no-print, .app-header, .tabs { display: none !important; }
   .page { padding: 0; max-width: none; }
-  .qr-sheet { border: none; margin: 0; page-break-after: always; }
+  .qr-sheet { border: none; margin: 0; page-break-after: always; break-after: page; }
+  /* กันหน้ากระดาษเปล่าเกินท้ายสุด: แผ่นสุดท้ายไม่ต้องขึ้นหน้าใหม่ */
+  .qr-sheet:last-child { page-break-after: auto; break-after: auto; }
+  #historyCard { display: none !important; }
   .qr-cell { border: 1px dashed #bbb; }
   @page { size: 4in 6in; margin: 0; }
 }

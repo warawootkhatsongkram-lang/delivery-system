@@ -205,9 +205,11 @@ async function getDOInfo(doNo) {
 
 // เพดานขนาดข้อมูลรูป (base64 data URL) — Firestore จำกัด 1 MiB/เอกสาร
 // เผื่อระยะห่างไว้พอสมควรสำหรับฟิลด์อื่น ๆ ในเอกสารเดียวกัน
-const PHOTO_MAX_BASE64_BYTES = 900 * 1024; // ~900 KB
-const PHOTO_MAX_DIMENSION_STEPS = [1000, 800, 600, 450];
-const PHOTO_QUALITY_STEPS = [0.7, 0.6, 0.5, 0.45];
+// ลดเพดานลงเพื่อให้ "อัปโหลดเร็วขึ้นชัดเจน" ตอนบันทึก (ยอมลดคุณภาพรูปลงบ้าง)
+// รูปยืนยันการส่งของ ~300KB @ ~800px ยังอ่านรายละเอียดได้ดี แต่ส่งขึ้น Firestore ไวกว่าเดิม ~3 เท่า
+const PHOTO_MAX_BASE64_BYTES = 320 * 1024; // ~320 KB
+const PHOTO_MAX_DIMENSION_STEPS = [1000, 800, 640, 480];
+const PHOTO_QUALITY_STEPS = [0.6, 0.5, 0.42];
 
 /** โหลด data URL เป็น HTMLImageElement */
 function loadImage_(dataUrl) {
@@ -292,7 +294,10 @@ async function saveScan(payload) {
   }
 
   // บีบอัดรูปก่อน (นอก transaction) ให้เล็กพอจะเก็บในเอกสาร Firestore
+  const tc = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   const compressedDataUrl = await compressImage_(payload.photoBase64);
+  dbg('บีบอัดรูป ' + Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now())) - tc) +
+      ' ms · ~' + Math.round(compressedDataUrl.length / 1024) + ' KB');
 
   const scanId = doNoInput + '__' + seqId_(parsed.seq);
   const scanRef = db.collection('scans').doc(scanId);
@@ -300,6 +305,7 @@ async function saveScan(payload) {
 
   // กันสแกนซ้ำแบบ atomic ด้วย transaction (แทน LockService เดิม)
   // เขียนทั้งเอกสาร scan และ scanPhoto พร้อมกันใน transaction เดียว
+  const tw = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   await db.runTransaction(async (tx) => {
     const existing = await tx.get(scanRef);
     if (existing.exists) {
@@ -319,6 +325,7 @@ async function saveScan(payload) {
       doNo: doNoInput
     });
   });
+  dbg('เขียน Firestore ' + Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now())) - tw) + ' ms');
 
   return getDOInfo(doNoInput);
 }
@@ -657,38 +664,46 @@ $('btnCancelScan').addEventListener('click', () => {
   $('confirmCard').style.display = 'none';
 });
 
-$('btnSaveScan').addEventListener('click', async () => {
+// บันทึกแบบ "เบื้องหลัง" (optimistic UI): ปิดการ์ดทันที พร้อมสแกนดวงถัดไปได้เลย
+// การบีบอัด/อัปโหลดทำเบื้องหลัง แล้วเด้ง toast สำเร็จ/ล้มเหลวทีหลัง — รู้สึกเร็วขึ้นมาก
+$('btnSaveScan').addEventListener('click', () => {
   if (!photoData) return toast('ต้องถ่ายรูปแนบก่อน', 'error');
   if (!pendingScan) return;
-  const btn = $('btnSaveScan');
-  const cancelBtn = $('btnCancelScan');
-  btn.disabled = true;
-  cancelBtn.disabled = true;
-  const originalLabel = btn.textContent;
-  btn.textContent = '⏳ กำลังบันทึก...';
-  busy(true);
+
+  // จับค่าปัจจุบันไว้ในตัวแปรเฉพาะ ก่อนเคลียร์ (กันชนกับการสแกนดวงถัดไป)
+  const payload = {
+    doNo: currentDO,
+    qrData: pendingScan.qrData,
+    photoBase64: photoData.base64,
+    mimeType: photoData.mimeType,
+    note: $('scanNote').value.trim()
+  };
+  const seq = pendingScan.seq;
+  const doForSummary = currentDO;
+
+  // ปิดการ์ดยืนยันทันที + เคลียร์เพื่อสแกนพาเลทถัดไปได้เลย
+  pendingScan = null;
+  $('confirmCard').style.display = 'none';
+  toast('⏳ กำลังบันทึกพาเลท ' + seq + '...', '');
+
+  saveScanBackground_(payload, seq, doForSummary);
+});
+
+/** บันทึกการสแกนแบบเบื้องหลัง แล้วรายงานผลผ่าน toast + DEBUG PANEL */
+async function saveScanBackground_(payload, seq, doForSummary) {
+  const t0 = (typeof performance !== 'undefined') ? performance.now() : Date.now();
   try {
-    const info = await saveScan({
-      doNo: currentDO,
-      qrData: pendingScan.qrData,
-      photoBase64: photoData.base64,
-      mimeType: photoData.mimeType,
-      note: $('scanNote').value.trim()
-    });
-    toast('บันทึกพาเลท ' + pendingScan.seq + ' แล้ว', 'ok');
-    pendingScan = null;
-    $('confirmCard').style.display = 'none';
-    renderDoSummary(info);
+    const info = await saveScan(payload);
+    dbg('✅ บันทึกพาเลท ' + seq + ' รวมทั้งหมด ' +
+        Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now())) - t0) + ' ms');
+    toast('✅ บันทึกพาเลท ' + seq + ' แล้ว', 'ok');
+    if (currentDO === doForSummary) renderDoSummary(info); // อัปเดตสรุปถ้ายังอยู่ DO เดิม
     if (info.scanned >= info.total) toast('🎉 DO ' + info.doNo + ' ส่งครบแล้ว!', 'ok');
   } catch (e) {
-    toast(e.message || 'บันทึกไม่สำเร็จ', 'error');
-  } finally {
-    busy(false);
-    btn.disabled = false;
-    cancelBtn.disabled = false;
-    btn.textContent = originalLabel;
+    dbg('❌ บันทึกพาเลท ' + seq + ' ล้มเหลว: ' + (e && (e.message || e)));
+    toast('❌ พาเลท ' + seq + ' บันทึกไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
   }
-});
+}
 
 // ===================== หน้า 3: มอนิเตอร์ (เรียลไทม์ผ่าน onSnapshot) =====================
 $('btnRefresh').addEventListener('click', renderMonitor);
@@ -881,55 +896,47 @@ function buildScanRow(s) {
 async function openScanPhoto_(s, thumbEl) {
   if (!firebaseReady) return;
 
-  // เปิดหน้าต่าง/แท็บใหม่ทันที (ก่อน fetch เสร็จ) เพื่อเลี่ยงปัญหา popup blocker
-  const win = window.open('', '_blank');
-  if (win) {
-    win.document.title = 'รูปพาเลท ' + s.palletNo;
-    win.document.body.style.margin = '0';
-    win.document.body.style.background = '#111';
-    win.document.body.innerHTML =
-      '<div style="color:#fff;font-family:sans-serif;padding:24px;text-align:center">กำลังโหลดรูป...</div>';
-  }
-
+  openLightbox_(null);            // เปิด lightbox โหมด "กำลังโหลด" ทันที
   const original = thumbEl.textContent;
   thumbEl.textContent = '⏳';
 
   try {
     const snap = await db.collection('scanPhotos').doc(s.scanId).get();
     if (!snap.exists || !snap.data() || !snap.data().dataUrl) {
-      if (win) {
-        win.document.body.innerHTML =
-          '<div style="color:#fff;font-family:sans-serif;padding:24px;text-align:center">ไม่พบรูปสำหรับรายการนี้</div>';
-      } else {
-        toast('ไม่พบรูปสำหรับรายการนี้', 'error');
-      }
+      closeLightbox_();
+      toast('ไม่พบรูปสำหรับรายการนี้', 'error');
       return;
     }
-    const dataUrl = snap.data().dataUrl;
-    if (win) {
-      win.document.body.innerHTML =
-        '<img src="' + dataUrl + '" alt="รูปพาเลท ' + s.palletNo + '" ' +
-        'style="display:block;max-width:100%;max-height:100vh;margin:0 auto">';
-    } else {
-      // popup ถูกบล็อก — แสดงตัวอย่างย่อในที่เดิมแทน
-      thumbEl.innerHTML = '';
-      const img = document.createElement('img');
-      img.className = 'mon-photo-thumb';
-      img.src = dataUrl;
-      img.alt = 'รูปพาเลท ' + s.palletNo;
-      thumbEl.replaceWith(img);
-    }
+    openLightbox_(snap.data().dataUrl);   // แสดงรูปเต็มใน lightbox
   } catch (e) {
-    if (win) {
-      win.document.body.innerHTML =
-        '<div style="color:#fff;font-family:sans-serif;padding:24px;text-align:center">โหลดรูปไม่สำเร็จ: ' +
-        escapeHtml_(e.message || '') + '</div>';
-    } else {
-      toast('โหลดรูปไม่สำเร็จ: ' + (e.message || ''), 'error');
-    }
+    closeLightbox_();
+    toast('โหลดรูปไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
   } finally {
     if (thumbEl.isConnected) thumbEl.textContent = original;
   }
+}
+
+/** เปิด lightbox — ถ้า dataUrl ว่าง = โหมดกำลังโหลด */
+function openLightbox_(dataUrl) {
+  const lb = $('lightbox');
+  const img = $('lightboxImg');
+  const loading = $('lightboxLoading');
+  if (dataUrl) {
+    img.src = dataUrl;
+    img.style.display = 'block';
+    loading.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    img.src = '';
+    loading.style.display = 'block';
+  }
+  lb.style.display = 'flex';
+}
+
+function closeLightbox_() {
+  const lb = $('lightbox');
+  lb.style.display = 'none';
+  $('lightboxImg').src = '';
 }
 
 function escapeHtml_(str) {
@@ -939,11 +946,197 @@ function escapeHtml_(str) {
     .replace(/>/g, '&gt;');
 }
 
+// ===================== หน้า 1 (ต่อ): ประวัติ DO — ดู/ปริ้นซ้ำ/แก้จำนวน/ลบ =====================
+let historyDos = [];              // [{doNo, palletCount, createdAt, createdBy}]
+let historyListenerStarted = false;
+
+function startHistoryListener_() {
+  if (historyListenerStarted || !firebaseReady) return;
+  historyListenerStarted = true;
+  db.collection('dos').onSnapshot((snap) => {
+    historyDos = [];
+    snap.forEach((doc) => {
+      const d = doc.data();
+      historyDos.push({
+        doNo: doc.id,
+        palletCount: parseInt(d.palletCount, 10) || 0,
+        createdAt: d.createdAt || null,
+        createdBy: d.createdBy || ''
+      });
+    });
+    historyDos.sort((a, b) => {
+      const am = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+      const bm = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+      return bm - am;
+    });
+    renderHistory();
+  }, (err) => {
+    dbg('history listener error: ' + (err && err.message));
+  });
+}
+
+function renderHistory() {
+  const list = $('historyList');
+  if (!list) return;
+  if (!firebaseReady) { list.innerHTML = '<div class="history-empty">ยังไม่ได้เชื่อมต่อ Firebase</div>'; return; }
+  if (!historyDos.length) { list.innerHTML = '<div class="history-empty">ยังไม่มี DO ที่สร้างไว้</div>'; return; }
+  list.innerHTML = '';
+  historyDos.forEach((d) => list.appendChild(buildHistoryRow(d)));
+}
+
+function buildHistoryRow(d) {
+  const row = document.createElement('div');
+  row.className = 'history-row';
+
+  const info = document.createElement('div');
+  info.className = 'history-info';
+  const created = formatTimestamp_(d.createdAt);
+  info.innerHTML =
+    '<div class="history-do">' + escapeHtml_(d.doNo) + '</div>' +
+    '<div class="history-sub">' + d.palletCount + ' พาเลท' +
+      (created ? ' · สร้าง ' + created : '') +
+      (d.createdBy ? ' · โดย ' + escapeHtml_(d.createdBy) : '') + '</div>';
+  row.appendChild(info);
+
+  const actions = document.createElement('div');
+  actions.className = 'history-actions';
+
+  const bPrint = document.createElement('button');
+  bPrint.className = 'h-print'; bPrint.type = 'button'; bPrint.textContent = '🖨️ ปริ้นซ้ำ';
+  bPrint.addEventListener('click', () => reprintDO(d.doNo, d.palletCount));
+
+  const bEdit = document.createElement('button');
+  bEdit.className = 'h-edit'; bEdit.type = 'button'; bEdit.textContent = '✏️ แก้จำนวน';
+  bEdit.addEventListener('click', () => startEditCount(row, d));
+
+  const bDel = document.createElement('button');
+  bDel.className = 'h-del'; bDel.type = 'button'; bDel.textContent = '🗑️ ลบ';
+  bDel.addEventListener('click', () => deleteDO(d.doNo));
+
+  actions.appendChild(bPrint);
+  actions.appendChild(bEdit);
+  actions.appendChild(bDel);
+  row.appendChild(actions);
+  return row;
+}
+
+/** ปริ้นซ้ำ QR ของ DO (กรณีป้ายชำรุด) — วาดใหม่แล้วเปิดหน้าพิมพ์ */
+function reprintDO(doNo, count) {
+  const codes = [];
+  for (let i = 1; i <= count; i++) codes.push({ seq: i, qrData: buildQrData_(doNo, i) });
+  renderQrSheets(doNo, codes);
+  $('btnPrint').style.display = 'block';
+  $('printArea').scrollIntoView({ behavior: 'smooth' });
+  toast('เตรียมพิมพ์ DO ' + doNo + ' (' + count + ' ดวง)', 'ok');
+  setTimeout(() => window.print(), 500);
+}
+
+/** แก้ "จำนวนพาเลท" ของ DO แบบ inline */
+function startEditCount(row, d) {
+  if (row.querySelector('.history-edit')) return; // กันเปิดซ้ำ
+  const box = document.createElement('div');
+  box.className = 'history-edit';
+  const input = document.createElement('input');
+  input.type = 'number'; input.min = '1'; input.max = '999'; input.value = d.palletCount;
+  const save = document.createElement('button');
+  save.className = 'primary'; save.type = 'button'; save.textContent = 'บันทึก';
+  const cancel = document.createElement('button');
+  cancel.className = 'ghost'; cancel.type = 'button'; cancel.textContent = 'ยกเลิก';
+  box.appendChild(input); box.appendChild(save); box.appendChild(cancel);
+  row.appendChild(box);
+  input.focus();
+
+  cancel.addEventListener('click', () => box.remove());
+  save.addEventListener('click', async () => {
+    const n = parseInt(input.value, 10);
+    if (!(n >= 1 && n <= 999)) return toast('จำนวนพาเลทต้องอยู่ระหว่าง 1–999', 'error');
+    save.disabled = true; cancel.disabled = true;
+    busy(true);
+    try {
+      await db.collection('dos').doc(d.doNo).set({ palletCount: n }, { merge: true });
+      toast('แก้จำนวนพาเลท ' + d.doNo + ' เป็น ' + n + ' แล้ว', 'ok');
+      box.remove();
+    } catch (e) {
+      toast('แก้ไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
+      save.disabled = false; cancel.disabled = false;
+    } finally { busy(false); }
+  });
+}
+
+/** ลบ DO (พร้อมยืนยัน) — ถ้ามีการสแกนแล้วจะลบ scans + รูปทั้งหมดของ DO นี้ด้วย */
+async function deleteDO(doNo) {
+  if (!firebaseReady) return;
+  busy(true);
+  const scanDocs = [];
+  try {
+    const scansSnap = await db.collection('scans').where('doNo', '==', doNo).get();
+    scansSnap.forEach((doc) => scanDocs.push(doc.id));
+  } catch (e) {
+    busy(false);
+    return toast('ตรวจข้อมูลสแกนไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
+  }
+  busy(false);
+
+  const n = scanDocs.length;
+  const msg = n > 0
+    ? ('⚠️ DO ' + doNo + ' มีการสแกนไปแล้ว ' + n + ' รายการ\n\nการลบจะลบ DO นี้ พร้อม "การสแกนและรูปถ่ายทั้งหมด" อย่างถาวร\n\nยืนยันลบ?')
+    : ('ต้องการลบ DO ' + doNo + ' ใช่ไหม?');
+  const ok = await showConfirm(msg);
+  if (!ok) return;
+
+  busy(true);
+  try {
+    // รวมรายการที่จะลบ: scans + scanPhotos (id เดียวกัน) + เอกสาร DO
+    const refs = [];
+    scanDocs.forEach((id) => {
+      refs.push(db.collection('scans').doc(id));
+      refs.push(db.collection('scanPhotos').doc(id));
+    });
+    refs.push(db.collection('dos').doc(doNo));
+    // แบ่ง commit ทีละ 400 op (เพดาน batch = 500)
+    for (let i = 0; i < refs.length; i += 400) {
+      const batch = db.batch();
+      refs.slice(i, i + 400).forEach((ref) => batch.delete(ref));
+      await batch.commit();
+    }
+    toast('ลบ DO ' + doNo + ' แล้ว', 'ok');
+  } catch (e) {
+    toast('ลบไม่สำเร็จ: ' + (e && e.message ? e.message : ''), 'error');
+  } finally {
+    busy(false);
+  }
+}
+
+// ----- Modal ยืนยัน (คืน Promise<boolean>) — ใช้แทน confirm() ของเบราว์เซอร์ -----
+let confirmResolver_ = null;
+function showConfirm(message) {
+  return new Promise((resolve) => {
+    confirmResolver_ = resolve;
+    $('confirmModalMsg').textContent = message;
+    $('confirmModal').style.display = 'flex';
+  });
+}
+function closeConfirm_(result) {
+  $('confirmModal').style.display = 'none';
+  const r = confirmResolver_; confirmResolver_ = null;
+  if (r) r(result);
+}
+$('confirmModalOk').addEventListener('click', () => closeConfirm_(true));
+$('confirmModalCancel').addEventListener('click', () => closeConfirm_(false));
+$('confirmModal').addEventListener('click', (e) => { if (e.target === $('confirmModal')) closeConfirm_(false); });
+
+// ----- ปุ่มรีเฟรชประวัติ + ปิด lightbox -----
+$('btnHistoryRefresh').addEventListener('click', renderHistory);
+$('lightboxClose').addEventListener('click', closeLightbox_);
+$('lightbox').addEventListener('click', (e) => { if (e.target === $('lightbox')) closeLightbox_(); });
+
 // ===================== เริ่มต้นแอป =====================
 initFirebase_();
 dbg('แอปเริ่มทำงาน · html5-qrcode=' + (typeof Html5Qrcode !== 'undefined') +
     ' · getUserMedia=' + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) +
     ' · HTTPS/secure=' + window.isSecureContext + ' · Firebase=' + firebaseReady);
+if (firebaseReady) startHistoryListener_();
+renderHistory();
 if (firebaseReady && document.querySelector('.tab.active')?.dataset.tab === 'monitor') {
   renderMonitor();
 }
