@@ -223,7 +223,7 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 
 @media print {
   body { background: #fff; padding: 0; }
-  .no-print, .app-header, .tabs { display: none !important; }
+  .no-print, .app-header, .tabs, .toast, .overlay { display: none !important; }
   .page { padding: 0; max-width: none; }
   .qr-sheet { border: none; margin: 0; page-break-after: always; break-after: page; }
   /* กันหน้ากระดาษเปล่าเกินท้ายสุด: แผ่นสุดท้ายไม่ต้องขึ้นหน้าใหม่ */
