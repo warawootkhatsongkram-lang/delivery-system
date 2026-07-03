@@ -85,15 +85,6 @@
         <input id="manualQr" type="text" placeholder="เช่น DO12345-001" autocomplete="off">
         <button id="btnManualQr" class="primary">ตรวจสอบ</button>
       </div>
-
-      <!-- DEBUG PANEL: แสดงสถานะกล้อง/ไลบรารี เพื่อวิเคราะห์ปัญหาให้ตรงจุด (คงไว้จนกว่าจะสั่งเอาออก) -->
-      <div id="debugPanel">
-        <div class="dbg-head">
-          <span>🐞 DEBUG PANEL (กล้อง/สแกน)</span>
-          <button id="btnDbgClear" type="button">ล้าง</button>
-        </div>
-        <div id="debugLog" class="dbg-log"></div>
-      </div>
     </div>
 
     <!-- การ์ดยืนยันหลังสแกนได้ -->
@@ -174,6 +165,23 @@
 
   <div id="toast" class="toast"></div>
   <div id="overlay" class="overlay" style="display:none"><div class="spinner"></div></div>
+
+  <!-- DEBUG DOCK: ซ่อนสนิท เด้งเฉพาะตอน ERROR · ปุ่มลอยมุมขวา ลากย้ายได้ · แตะเพื่อดูว่า ERROR เกิดอะไร (คงไว้จนกว่าจะสั่งเอาออก) -->
+  <div id="debugDock" class="dbg-dock" hidden>
+    <div id="debugPanel" class="dbg-panel" hidden>
+      <div class="dbg-head">
+        <span>🐞 DEBUG · ERROR</span>
+        <span class="dbg-actions">
+          <button id="btnDbgClear" type="button">ล้าง</button>
+          <button id="btnDbgClose" type="button">ปิด</button>
+        </span>
+      </div>
+      <div id="debugLog" class="dbg-log"></div>
+    </div>
+    <button id="debugFab" class="dbg-fab" type="button" title="พบ ERROR — แตะเพื่อดู · ลากเพื่อย้าย">
+      🐞<span id="dbgCount" class="dbg-count">0</span>
+    </button>
+  </div>
 
   <script src="app.js"></script>
 </body>

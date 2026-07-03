@@ -69,22 +69,50 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 
 #reader { max-width: 360px; margin: 12px auto 0; border-radius: 8px; overflow: hidden; }
 
-/* DEBUG PANEL (กล้อง/สแกน) — คงไว้จนกว่าจะสั่งเอาออก */
-#debugPanel { margin-top: 14px; border: 1px solid var(--line); border-radius: 8px; background: #1e1e1e; overflow: hidden; }
+/* DEBUG DOCK (ลอยมุมขวา · ซ่อนสนิท เด้งเฉพาะ ERROR · ลากได้ทุกหน้า) — คงไว้จนกว่าจะสั่งเอาออก */
+.dbg-dock {
+  position: fixed; right: 12px; bottom: 12px; z-index: 9999;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+}
+.dbg-dock[hidden] { display: none; }
+.dbg-fab {
+  width: 44px; height: 44px; border-radius: 50%; border: none;
+  background: #c62828; color: #fff; font-size: 18px; cursor: grab; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,.35); opacity: .9; touch-action: none;
+}
+.dbg-fab:active { cursor: grabbing; }
+.dbg-fab.pulse { animation: dbgPulse .9s ease-out 2; }
+@keyframes dbgPulse {
+  0%   { box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 0 0 0 rgba(198,40,40,.55); }
+  100% { box-shadow: 0 2px 8px rgba(0,0,0,.35), 0 0 0 16px rgba(198,40,40,0); }
+}
+.dbg-count {
+  position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px;
+  border-radius: 9px; background: #fff; color: #c62828;
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center;
+}
+.dbg-panel {
+  width: min(320px, 82vw); border: 1px solid var(--line); border-radius: 8px;
+  background: #1e1e1e; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.45);
+}
+.dbg-panel[hidden] { display: none; }
 .dbg-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 8px 10px; background: #263238; color: #eceff1; font-size: 12px; font-weight: 700;
 }
+.dbg-actions { display: flex; gap: 6px; }
 .dbg-head button {
   background: #37474f; color: #eceff1; border: none; border-radius: 6px;
   padding: 4px 10px; font-size: 12px; cursor: pointer;
 }
 .dbg-log {
-  max-height: 180px; overflow-y: auto; padding: 8px 10px;
+  max-height: 40vh; overflow-y: auto; padding: 8px 10px;
   font-family: "Menlo", "Consolas", monospace; font-size: 11px; line-height: 1.5;
   color: #b9f6ca; white-space: pre-wrap; word-break: break-all;
 }
 .dbg-log div { border-bottom: 1px solid rgba(255,255,255,.05); padding: 1px 0; }
+.dbg-log div.err { color: #ff8a80; font-weight: 700; }
 
 /* มอนิเตอร์ */
 .mon-item { display: flex; align-items: center; gap: 12px; }
@@ -227,7 +255,7 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 
 @media print {
   body { background: #fff; padding: 0; }
-  .no-print, .app-header, .tabs, .toast, .overlay { display: none !important; }
+  .no-print, .app-header, .tabs, .toast, .overlay, .dbg-dock { display: none !important; }
   .page { padding: 0; max-width: none; }
   .qr-sheet { border: none; margin: 0; page-break-after: always; break-after: page; }
   /* กันหน้ากระดาษเปล่าเกินท้ายสุด: แผ่นสุดท้ายไม่ต้องขึ้นหน้าใหม่ */
