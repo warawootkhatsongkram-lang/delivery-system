@@ -218,7 +218,7 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 }
 .qr-cell .qr-img { width: 1.5in; height: 1.5in; background: #fff; padding: 0.1in; }
 .qr-cell .qr-img img, .qr-cell .qr-img canvas { width: 100% !important; height: 100% !important;
-  image-rendering: pixelated; image-rendering: crisp-edges; }
+  image-rendering: auto; }
 .qr-cell .qr-label { font-size: 11px; font-weight: 700; margin-top: 4px; word-break: break-all; }
 
 @media print {
