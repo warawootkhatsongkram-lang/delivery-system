@@ -92,7 +92,11 @@ code { background: #eceff1; padding: 1px 6px; border-radius: 4px; }
 .mon-do { font-weight: 700; font-size: 16px; }
 .mon-sub { font-size: 12px; color: #78909c; }
 .bar { height: 8px; background: #eceff1; border-radius: 4px; overflow: hidden; margin-top: 6px; }
-.bar > span { display: block; height: 100%; background: var(--primary); }
+.bar > span { display: block; height: 100%; background: var(--primary); transition: width .3s ease; }
+.bar.warn > span   { background: #f59e0b; }  /* ส้ม 60–80% */
+.bar.danger > span { background: #ef4444; }  /* แดง ≥80% */
+.storage-gauge .bar { height: 14px; }        /* กราฟความจุให้หนากว่าปกติเล็กน้อย */
+.gauge-warn { color: #ef4444; font-weight: 700; }
 .badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .badge.ok { background: #e8f5e9; color: var(--ok); }
 .badge.no { background: #fff3e0; color: var(--warn); }

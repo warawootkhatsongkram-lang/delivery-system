@@ -125,6 +125,12 @@
 
   <!-- ===== หน้า 4: ส่งออก / จัดการรูป ===== -->
   <section id="page-export" class="page">
+    <div class="card no-print storage-gauge">
+      <label>📊 ความจุ Firestore</label>
+      <div class="bar" id="gaugeBar"><span style="width:0%"></span></div>
+      <p class="hint" id="gaugeText">กำลังคำนวณ...</p>
+      <p class="hint gauge-warn" id="gaugeWarn" style="display:none">⚠️ ใกล้เต็ม — แนะนำส่งออก ZIP แล้วลบรูปเพื่อคืนพื้นที่</p>
+    </div>
     <div class="card no-print">
       <label>⬇️ ส่งออก / จัดการรูปถ่าย</label>
       <p class="hint">โหลดรูปเก็บไว้ในคอมเป็นไฟล์ ZIP (ชื่อไฟล์ = <code>DO-ลำดับ.jpg</code>) แล้วค่อยกด "ลบรูป" เพื่อคืนพื้นที่ Firestore (ฟรี 1 GiB) — ประวัติการสแกนยังอยู่ครบ</p>

@@ -316,6 +316,7 @@ async function saveScan(payload) {
       palletNo: parsed.seq,
       qrData: String(payload.qrData).trim().toUpperCase(),
       hasPhoto: true,
+      photoBytes: compressedDataUrl.length,   // ขนาดรูป (base64 char ≈ ไบต์) ใช้คำนวณกราฟความจุ Firestore
       note: String(payload.note || ''),
       scannedAt: firebase.firestore.FieldValue.serverTimestamp(),
       scannedBy: currentUser_()
@@ -774,6 +775,7 @@ function startMonitorListeners_() {
         palletNo: parseInt(d.palletNo, 10),
         qrData: d.qrData || '',
         hasPhoto: !!d.hasPhoto,
+        photoBytes: parseInt(d.photoBytes, 10) || 0,
         note: d.note || '',
         scannedAt: d.scannedAt || null,
         scannedBy: d.scannedBy || ''
@@ -1230,6 +1232,41 @@ function refreshExportIfActive_() {
   if (p && p.classList.contains('active')) renderExport();
 }
 
+// ===================== กราฟความจุ Firestore =====================
+// Firestore (แผนฟรี Spark) จำกัดพื้นที่จัดเก็บ 1 GiB — รูปถ่ายเก็บเป็น base64 ในคอลเลกชัน scanPhotos
+const FIRESTORE_LIMIT_BYTES = 1024 * 1024 * 1024; // 1 GiB = 100%
+const PHOTO_FALLBACK_BYTES = 320 * 1024;          // ค่าประมาณสำหรับรูปเก่าที่ไม่มีฟิลด์ photoBytes
+
+/** คำนวณ + วาดกราฟ % ความจุ Firestore จากขนาดรูปในแคช monitorScans */
+function renderStorageGauge_() {
+  const bar = $('gaugeBar');
+  const text = $('gaugeText');
+  const warn = $('gaugeWarn');
+  if (!bar || !text) return;
+
+  let usedBytes = 0;
+  monitorScans.forEach((s) => {
+    if (s.hasPhoto) usedBytes += (s.photoBytes || PHOTO_FALLBACK_BYTES);
+  });
+
+  const pct = Math.min(100, usedBytes / FIRESTORE_LIMIT_BYTES * 100);
+  const usedMb = usedBytes / (1024 * 1024);
+  const usedText = usedMb >= 1024
+    ? (usedMb / 1024).toFixed(2) + ' GB'
+    : usedMb.toFixed(1) + ' MB';
+
+  const span = bar.querySelector('span');
+  if (span) span.style.width = pct.toFixed(1) + '%';
+
+  // สีสถานะ: เขียว <60% · ส้ม 60–80% · แดง ≥80%
+  bar.classList.remove('warn', 'danger');
+  if (pct >= 80) bar.classList.add('danger');
+  else if (pct >= 60) bar.classList.add('warn');
+
+  text.textContent = 'ใช้ไป ' + usedText + ' / 1 GiB (' + Math.round(pct) + '%)';
+  if (warn) warn.style.display = pct >= 80 ? 'block' : 'none';
+}
+
 function renderExport() {
   startMonitorListeners_(); // ใช้แคช dos/scans ร่วมกับมอนิเตอร์
   const list = $('exportList');
@@ -1240,6 +1277,8 @@ function renderExport() {
     if (meta) meta.textContent = '';
     return;
   }
+
+  renderStorageGauge_(); // อัปเดตกราฟความจุก่อน
 
   // นับรูปต่อ DO จากแคช
   const byDo = {};
