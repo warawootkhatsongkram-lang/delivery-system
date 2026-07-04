@@ -112,10 +112,11 @@ function formatTimestamp_(ts) {
   if (!ts) return '';
   try {
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    const bkk = new Date(d.getTime() + (7 * 60 - d.getTimezoneOffset()) * 60000);
+    // เลื่อนเป็นเวลาไทย (UTC+7) แล้วอ่านด้วย getUTC* เพื่อไม่ให้ timezone ของเครื่องผู้ชมมีผล
+    const bkk = new Date(d.getTime() + 7 * 60 * 60 * 1000);
     const pad = (n) => String(n).padStart(2, '0');
-    return bkk.getFullYear() + '-' + pad(bkk.getMonth() + 1) + '-' + pad(bkk.getDate()) +
-      ' ' + pad(bkk.getHours()) + ':' + pad(bkk.getMinutes()) + ':' + pad(bkk.getSeconds());
+    return bkk.getUTCFullYear() + '-' + pad(bkk.getUTCMonth() + 1) + '-' + pad(bkk.getUTCDate()) +
+      ' ' + pad(bkk.getUTCHours()) + ':' + pad(bkk.getUTCMinutes()) + ':' + pad(bkk.getUTCSeconds());
   } catch (e) {
     return '';
   }
